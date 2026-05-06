@@ -1,0 +1,12 @@
+
+> pmc-server@1.0.0 build
+> tsc
+
+src/config/auth.ts(1,28): error TS7016: Could not find a declaration file for module 'better-auth'. 'C:/Users/54321/Desktop/jit 2/server/node_modules/better-auth/dist/index.mjs' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/better-auth` if it exists or add a new declaration (.d.ts) file containing `declare module 'better-auth';`
+src/config/auth.ts(2,32): error TS7016: Could not find a declaration file for module 'better-auth/adapters/drizzle'. 'C:/Users/54321/Desktop/jit 2/server/node_modules/better-auth/dist/adapters/drizzle-adapter/index.mjs' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/better-auth` if it exists or add a new declaration (.d.ts) file containing `declare module 'better-auth/adapters/drizzle';`
+src/middleware/auth.middleware.ts(3,33): error TS7016: Could not find a declaration file for module 'better-auth/node'. 'C:/Users/54321/Desktop/jit 2/server/node_modules/better-auth/dist/integrations/node.mjs' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/better-auth` if it exists or add a new declaration (.d.ts) file containing `declare module 'better-auth/node';`
+src/routes/auth.routes.ts(2,31): error TS7016: Could not find a declaration file for module 'better-auth/node'. 'C:/Users/54321/Desktop/jit 2/server/node_modules/better-auth/dist/integrations/node.mjs' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/better-auth` if it exists or add a new declaration (.d.ts) file containing `declare module 'better-auth/node';`

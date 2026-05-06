@@ -1,0 +1,213 @@
+# Login Per Bagian — Role-Based Access Control (RBAC)
+
+Implementasi sistem login dengan pembagian akses menu berdasarkan role/bagian pengguna. Saat ini login bersifat *dummy* (hanya menyimpan username ke localStorage tanpa verifikasi), dan semua menu ditampilkan ke semua user. Perubahan ini akan mengaktifkan **autentikasi sesungguhnya via Better Auth** dan **membatasi menu sidebar + route akses** sesuai role.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **6 Role yang didefinisikan** — pastikan mapping menu di bawah sudah benar sebelum eksekusi:
+
+| # | Role | Kode Role | Menu yang Diizinkan |
+|---|------|-----------|---------------------|
+| 1 | **Admin** | `admin` | **Semua menu** |
+| 2 | **PPIC** | `ppic` | 🎯 Operasional PPIC, 📝 Request Material & SPB, Stok Utama Gudang (WMS), MONITOR DISTRIBUSI TRANSIT, Pusat Kendali JIT, Master Line per SKU |
+| 3 | **Admin Transit** | `admin_transit` | 📦 Operasional Transit, 📝 Request Material & SPB, 🛠️ Pengaturan & Master, 📊 Monitoring & Analitik, MONITOR DISTRIBUSI TRANSIT, Master Line per SKU, SPB Manual |
+| 4 | **Gudang** | `gudang` | 🏢 Operasional Gudang, 📝 Request Material & SPB, MONITOR DISTRIBUSI TRANSIT, Pusat Kendali JIT, 🖨️ Cetak Barcode Kustom, TV Dashboard |
+| 5 | **Operator Line** | `operator_line` | ⚙️ Operasional Produksi, 📝 Request Material & SPB, MONITOR DISTRIBUSI TRANSIT |
+| 6 | **Supervisor Produksi** | `supervisor` | ⚙️ Operasional Produksi, 📝 Request Material & SPB, MONITOR DISTRIBUSI TRANSIT, SPB Manual, 📊 Monitoring & Analitik |
+
+> [!WARNING]
+> **Breaking Change**: Setelah implementasi, login lama (tanpa password) tidak lagi berfungsi. Semua user harus menggunakan akun yang terdaftar di database. Seed script akan membuat akun demo untuk setiap role.
+
+## Open Questions
+
+> [!IMPORTANT]
+> 1. **Password default** untuk akun demo seed — apakah ingin menggunakan password seragam (misal `pmc2026`) atau berbeda per role?
+> 2. **Halaman default setelah login** — apakah setiap role diarahkan ke halaman berbeda (misal Gudang → Stok Utama, Operator → Line Inbound) atau semua ke Dashboard?
+> 3. **Item-item individual di luar grup** — beberapa menu yang Anda sebut (misal "Stok Utama Gudang/WMS", "TV Dashboard", "Cetak Barcode Kustom", "SPB Manual") bukan group tapi item individual. Saya akan implementasikan sebagai whitelist per-item sesuai tabel di atas. Konfirmasi?
+
+---
+
+## Proposed Changes
+
+### Arsitektur RBAC
+
+```mermaid
+flowchart TD
+    A[Login Page] -->|username + password| B[Better Auth API]
+    B -->|Session + Cookie| C{Authenticated?}
+    C -->|No| A
+    C -->|Yes| D[Get User + Role]
+    D --> E[Sidebar: Filter menu by role]
+    D --> F[Router: Guard routes by role]
+    D --> G[Topbar: Show role name]
+    E --> H[Dashboard / Halaman Default]
+```
+
+### Mapping Role → Menu Items (Detail)
+
+Setiap menu item di sidebar memiliki ID unik. Berikut mapping lengkap role ke item IDs:
+
+```
+PPIC:
+  ✅ Group: Operasional PPIC (schedule, master-sku, master-bom, master-supplier, manual-spb, summary)
+  ✅ Group: Request Material & SPB (materials, distribution, distribution-hourly)
+  ✅ Individual: warehouse-stock (Stok Utama/WMS)
+  ✅ Individual: transit-info (Monitor Distribusi Transit / Info Distribusi)
+  ✅ Individual: dashboard (Pusat Kendali JIT)
+  ✅ Individual: master-line-sku (Line per SKU)
+
+Admin Transit:
+  ✅ Group: Operasional Transit (stock, transit-inbound, transit-verify-reject, transit-outbound, transit-stock-on-hand, transit-opname, transit-master-receh, tv-inbound)
+  ✅ Group: Request Material & SPB
+  ✅ Group: Pengaturan & Master (master-block, master-line-sku, master-kamus-opname, print-barcode)
+  ✅ Group: Monitoring & Analitik (dashboard, transit-info, transit-mutation, opname-recap, transit-relocation, transit-anomaly, audit-log)
+  ✅ Individual: transit-info (Monitor Distribusi Transit)
+  ✅ Individual: master-line-sku (Line per SKU)
+  ✅ Individual: manual-spb (SPB Manual)
+
+Gudang:
+  ✅ Group: Operasional Gudang (warehouse-stock, warehouse-delivery, warehouse-outbound)
+  ✅ Group: Request Material & SPB
+  ✅ Individual: transit-info (Monitor Distribusi Transit)
+  ✅ Individual: dashboard (Pusat Kendali JIT)
+  ✅ Individual: print-barcode (Cetak Barcode Kustom)
+  ✅ Individual: tv-inbound (TV Dashboard)
+
+Operator Line:
+  ✅ Group: Operasional Produksi (prod-inbound, prod-outbound, prod-reject, prod-onhand, prod-bpp, prod-mutation, prod-opname, prod-3in1, pack-3in1)
+  ✅ Group: Request Material & SPB
+  ✅ Individual: transit-info (Monitor Distribusi Transit)
+
+Supervisor Produksi:
+  ✅ Group: Operasional Produksi
+  ✅ Group: Request Material & SPB
+  ✅ Individual: transit-info (Monitor Distribusi Transit)
+  ✅ Individual: manual-spb (SPB Manual)
+  ✅ Group: Monitoring & Analitik
+```
+
+---
+
+### 1. Frontend Auth Module (NEW)
+
+#### [NEW] [auth.js](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/src/lib/auth.js)
+
+Modul autentikasi frontend baru (vanilla JS, bukan TypeScript) yang menangani:
+- `login(username, password)` → POST ke Better Auth `/api/auth/sign-in/email`
+- `signup(name, email, password, role)` → POST ke Better Auth `/api/auth/sign-up/email`
+- `logout()` → POST ke Better Auth `/api/auth/sign-out`
+- `getSession()` → GET ke Better Auth `/api/auth/get-session` (cek cookie)
+- `getCurrentUser()` → return cached user object with `role`
+- `hasAccess(menuItemId)` → cek apakah current user role punya akses ke menu item tertentu
+- `getDefaultRoute(role)` → return hash route default sesuai role
+- Role-to-menu permission map (ROLE_PERMISSIONS constant)
+
+---
+
+### 2. Sidebar Component
+
+#### [MODIFY] [sidebar.js](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/src/components/sidebar.js)
+
+- Import `Auth` module
+- Di dalam `render()`, filter `NAV_ITEMS` menggunakan `Auth.hasAccess(item.id)` sebelum render
+- Group yang semua itemnya di-filter akan disembunyikan headernya juga
+- Tambahkan tombol **Logout** di footer sidebar (di samping collapse button)
+
+---
+
+### 3. Login Page
+
+#### [MODIFY] [login.js](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/src/pages/login.js)
+
+- Ganti logic `bindEvents()` dari dummy localStorage ke real `Auth.login(email, password)`
+- Tampilkan error message jika login gagal (username/password salah)
+- Setelah login berhasil, arahkan ke `Auth.getDefaultRoute(role)` 
+- Tambahkan animasi loading state yang lebih baik saat proses auth
+- Ganti label input dari "Username" menjadi "Email" (Better Auth pakai email)
+
+---
+
+### 4. Router
+
+#### [MODIFY] [router.js](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/src/router.js)
+
+- Tambahkan **route guard**: sebelum render halaman, cek `Auth.getSession()`
+  - Jika belum login → redirect ke `#/login`
+  - Jika sudah login tapi route tidak diizinkan → redirect ke halaman default + toast warning
+- Route `/login` dan `/` (login page) tetap publik
+
+---
+
+### 5. Topbar Component
+
+#### [MODIFY] [topbar.js](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/src/components/topbar.js)
+
+- Ambil user info dari `Auth.getCurrentUser()` bukan `localStorage`
+- Tampilkan **role badge** di samping nama (misal: "Admin Transit", "PPIC")
+- Logout button memanggil `Auth.logout()` yang benar
+
+---
+
+### 6. Backend Role Middleware
+
+#### [MODIFY] [role.middleware.ts](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/server/src/middleware/role.middleware.ts)
+
+- Update `Role` type untuk mencakup role baru:
+  ```typescript
+  type Role = "admin" | "ppic" | "admin_transit" | "gudang" | "operator_line" | "supervisor" | "viewer";
+  ```
+
+---
+
+### 7. Seed Script — Default Users
+
+#### [MODIFY] [seed.ts](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/server/src/db/seed.ts)
+
+- Tambahkan seeding user akun demo untuk setiap role melalui Better Auth API:
+
+| Email | Name | Role | Password |
+|-------|------|------|----------|
+| `admin@pmc.local` | Administrator | admin | `pmc2026` |
+| `ppic@pmc.local` | PPIC Staff | ppic | `pmc2026` |
+| `transit@pmc.local` | Admin Transit | admin_transit | `pmc2026` |
+| `gudang@pmc.local` | Operator Gudang | gudang | `pmc2026` |
+| `operator@pmc.local` | Operator Line | operator_line | `pmc2026` |
+| `spv@pmc.local` | Supervisor Produksi | supervisor | `pmc2026` |
+
+---
+
+### 8. Backend Routes Index
+
+#### [MODIFY] [index.ts](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/server/src/routes/index.ts)
+
+- Ganti `optionalAuth` menjadi `requireAuth` pada semua route (kecuali `/auth`)
+- Sesuai comment yang sudah ada: *"Switch back to requireAuth once the frontend has a login page"*
+
+---
+
+### 9. Main Entry Point
+
+#### [MODIFY] [main.js](file:///c:/Users/54321/Desktop/jit%202%20sql%20server/src/main.js)
+
+- Import `auth.js` module
+- Pada `DOMContentLoaded`, cek session terlebih dahulu sebelum init router
+- Jika belum login, langsung arahkan ke `#/login`
+
+---
+
+## Verification Plan
+
+### Automated Tests
+1. **Build test**: `npm run dev` berhasil tanpa error
+2. **Seed test**: Jalankan seed script, verifikasi 6 user terbuat di database
+3. **Login test per role**: Login sebagai setiap role melalui browser, verifikasi:
+   - Menu sidebar hanya menampilkan item yang diizinkan
+   - Navigasi langsung ke route terlarang (ketik hash manual) di-redirect
+   - Topbar menampilkan nama + role yang benar
+4. **Logout test**: Setelah logout, semua halaman redirect ke login
+
+### Manual Verification
+- Browser test: Login dengan 6 akun berbeda, screenshot sidebar masing-masing
+- Coba akses route terlarang via URL hash manual → pastikan redirect
+- Cek cookie session di DevTools → pastikan ada setelah login, hilang setelah logout

@@ -1,0 +1,45 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: pmc-sqlserver
+    restart: unless-stopped
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "pmc_secret_2026!"
+      MSSQL_PID: "Developer"
+    volumes:
+      - pmc_sqldata:/var/opt/mssql
+
+  web:
+    build: .
+    ports:
+      - "5137:5137"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - sqlserver
+    environment:
+      - VITE_PORT=5137
+
+  api:
+    build: ./server
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    depends_on:
+      - sqlserver
+    environment:
+      - DATABASE_URL=sqlserver://sqlserver:1433;database=pmc_db;user=sa;password=pmc_secret_2026!;trustServerCertificate=true
+      - PORT=3000
+      - NODE_ENV=development
+      - CORS_ORIGIN=http://localhost:5137
+      - BETTER_AUTH_SECRET=pmc-dev-secret-key-2026
+      - BETTER_AUTH_URL=http://localhost:3000
+
+volumes:
+  pmc_sqldata:

@@ -1,0 +1,10 @@
+import express from "express";
+console.log("express imported");
+import cors from "cors";
+console.log("cors imported");
+import { env } from "./src/config/env.js";
+console.log("env imported");
+import apiRoutes from "./src/routes/index.js";
+console.log("apiRoutes imported");
+console.log("All essential imports successful");
+process.exit(0);

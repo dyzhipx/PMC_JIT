@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Implementation Plan — PMC JIT System</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    color: #1a1a2e;
+    background: #fff;
+    line-height: 1.7;
+    font-size: 11pt;
+    padding: 0;
+  }
+
+  .page {
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 20mm 18mm;
+  }
+
+  @media print {
+    body { background: #fff; }
+    .page { padding: 15mm; max-width: 100%; }
+    .no-print { display: none !important; }
+    h2 { page-break-before: auto; }
+    table { page-break-inside: avoid; }
+    .section { page-break-inside: avoid; }
+  }
+
+  /* Header */
+  .doc-header {
+    text-align: center;
+    border-bottom: 3px solid #1a1a2e;
+    padding-bottom: 16px;
+    margin-bottom: 24px;
+  }
+  .doc-header h1 {
+    font-size: 18pt;
+    font-weight: 800;
+    color: #1a1a2e;
+    margin-bottom: 4px;
+    letter-spacing: -0.5px;
+  }
+  .doc-header .subtitle {
+    font-size: 11pt;
+    color: #555;
+    font-weight: 400;
+  }
+  .doc-header .meta {
+    margin-top: 12px;
+    font-size: 9pt;
+    color: #777;
+  }
+  .doc-header .meta span {
+    margin: 0 10px;
+  }
+
+  /* Company badge */
+  .company-badge {
+    display: inline-block;
+    background: #1a1a2e;
+    color: #fff;
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+
+  /* Headings */
+  h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 28px 0 12px 0;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #e0e0e0;
+  }
+  h3 {
+    font-size: 12pt;
+    font-weight: 600;
+    color: #333;
+    margin: 20px 0 8px 0;
+  }
+  h4 {
+    font-size: 10.5pt;
+    font-weight: 600;
+    color: #555;
+    margin: 14px 0 6px 0;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 16px 0;
+    font-size: 9.5pt;
+  }
+  th {
+    background: #1a1a2e;
+    color: #fff;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9pt;
+  }
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #e8e8e8;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f8f9fa; }
+  tr:hover td { background: #f0f4ff; }
+
+  /* Highlight row */
+  .highlight-red td { background: #fff0f0 !important; color: #c0392b; font-weight: 600; }
+  .highlight-green td { background: #f0fff4 !important; }
+
+  /* Alert boxes */
+  .alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 12px 0;
+    font-size: 10pt;
+  }
+  .alert-warning {
+    background: #fff8e1;
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+  }
+  .alert-danger {
+    background: #fef2f2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+  }
+  .alert-info {
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    color: #1e40af;
+  }
+  .alert-success {
+    background: #f0fdf4;
+    border-left: 4px solid #22c55e;
+    color: #166534;
+  }
+
+  /* Code/flow blocks */
+  .flow-block {
+    background: #f4f5f7;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 14px 18px;
+    font-family: 'Courier New', monospace;
+    font-size: 9.5pt;
+    line-height: 1.8;
+    margin: 10px 0 16px 0;
+    white-space: pre-wrap;
+  }
+
+  /* UI Mockup */
+  .mockup {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 9pt;
+    line-height: 1.6;
+    margin: 10px 0 16px 0;
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  /* List */
+  ul, ol {
+    padding-left: 20px;
+    margin: 6px 0 12px 0;
+  }
+  li {
+    margin-bottom: 4px;
+  }
+
+  /* Section wrapper */
+  .section {
+    margin-bottom: 20px;
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 8.5pt;
+    font-weight: 600;
+  }
+  .badge-red { background: #fecaca; color: #991b1b; }
+  .badge-green { background: #bbf7d0; color: #166534; }
+  .badge-blue { background: #bfdbfe; color: #1e40af; }
+  .badge-yellow { background: #fef08a; color: #854d0e; }
+
+  /* Print button */
+  .print-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #1a1a2e;
+    color: #fff;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 11pt;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 999;
+  }
+  .print-btn:hover { background: #2d2d5e; }
+
+  /* Separator */
+  hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 24px 0;
+  }
+
+  /* Formula */
+  .formula {
+    background: #f0f4ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 9.5pt;
+    line-height: 1.8;
+    margin: 10px 0;
+  }
+
+  .footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 2px solid #1a1a2e;
+    text-align: center;
+    font-size: 8.5pt;
+    color: #999;
+  }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">🖨️ Cetak / Simpan PDF</button>
+
+<div class="page">
+
+<!-- HEADER -->
+<div class="doc-header">
+  <div class="company-badge">PT. SANTOS JAYA ABADI</div>
+  <h1>IMPLEMENTATION PLAN</h1>
+  <div class="subtitle">Fitur Koreksi Cepat Transit & Rekonsiliasi Material Otomatis</div>
+  <div class="subtitle" style="font-weight:600; color:#1a1a2e;">Sistem PMC — JIT Production Material Control</div>
+  <div class="meta">
+    <span>📅 Tanggal: 6 April 2026</span>
+    <span>|</span>
+    <span>📋 Versi: 1.0</span>
+    <span>|</span>
+    <span>📌 Status: Menunggu Persetujuan</span>
+  </div>
+</div>
+
+<!-- KEPUTUSAN -->
+<div class="section">
+  <h2>1. Keputusan yang Telah Disepakati</h2>
+  <table>
+    <thead>
+      <tr><th>No</th><th>Parameter</th><th>Keputusan</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>Hak akses Koreksi Cepat</td><td><strong>Admin Transit saja</strong></td></tr>
+      <tr><td>2</td><td>Sumber data Counter Box</td><td><strong>Input manual per shift</strong> (operator baca display counter → ketik ke sistem)</td></tr>
+      <tr><td>3</td><td>Scope Reject Material</td><td><strong>Reject di mesin produksi saja</strong> (bukan reject fisik di transit)</td></tr>
+      <tr><td>4</td><td>Integrasi Counter Otomatis</td><td><strong>Fase 2 (nanti)</strong> — arsitektur siap, tinggal colok API saat sensor stabil</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<hr>
+
+<!-- ============================================ -->
+<!-- FITUR A -->
+<!-- ============================================ -->
+
+<div class="section">
+  <h2>2. Fitur A: Tombol Koreksi Cepat Transit (Poka-Yoke Bypass)</h2>
+  
+  <h3>2.1 Latar Belakang Masalah</h3>
+  <div class="alert alert-danger">
+    <strong>Masalah:</strong> Jika Helper produksi mengambil material dari area Transit <strong>tanpa scan barcode</strong>, maka:
+    <ul style="margin-top:6px;">
+      <li>Stok di sistem Transit masih tercatat <strong>penuh</strong> (padahal fisiknya sudah kosong)</li>
+      <li>Gudang <strong>tidak bisa mengirim</strong> barang baru (terblokir oleh aturan Stock Over)</li>
+      <li><strong>Alur produksi terhenti</strong> sampai ada yang menyadari kesalahan</li>
+    </ul>
+  </div>
+
+  <h3>2.2 Solusi</h3>
+  <p>Tombol <strong>"🔧 Koreksi Cepat"</strong> di halaman Info Distribusi Transit, <strong>hanya bisa diakses oleh Admin Transit</strong>, untuk mengoreksi jumlah pallet ke angka fisik aktual. Setiap koreksi akan tercatat permanen sebagai bahan evaluasi.</p>
+
+  <h3>2.3 Alur Kerja Operator</h3>
+  <div class="flow-block">1. Gudang mencoba kirim barang → Layar muncul "⚠️ STOCK OVER"
+2. Gudang menelepon Admin Transit → "Kenapa di sistem penuh?"
+3. Admin Transit cek fisik blok → "Oh ternyata kosong, helper ambil tanpa scan"
+4. Admin Transit klik "🔧 Koreksi" di layar Info Distribusi
+5. Input: Stok Fisik = 2 (dari 4), Alasan = "Helper Lupa Scan"
+6. Sistem langsung memotong 2 pallet dari database
+7. Gudang bisa kirim lagi ✅
+8. Log koreksi tersimpan permanen → bahan evaluasi HRD</div>
+
+  <h3>2.4 Contoh Tampilan UI</h3>
+  <div class="mockup">┌─────────────────────────────────────────┐
+│  📍 Blok 1 - Baris 2                   │
+│  Material: Karton Mocca                 │
+│  Stok Sistem: 4 Pallet (PENUH)         │
+│                                         │
+│  [🔧 Koreksi]                          │
+└─────────────────────────────────────────┘
+
+        ↓ Setelah Klik "Koreksi" ↓
+
+┌─────────────────────────────────────────┐
+│  ⚠️ Koreksi Stok — Karton Mocca        │
+│                                         │
+│  Stok Sistem Saat Ini: 4 Pallet        │
+│  Stok Fisik Aktual:   [___2___]        │
+│                                         │
+│  Alasan:                                │
+│  [▼ Helper Lupa Scan        ]          │
+│  Catatan: [________________]            │
+│                                         │
+│  [Batal]          [💾 Simpan Koreksi]  │
+└─────────────────────────────────────────┘</div>
+
+  <h3>2.5 Audit Log (Tersimpan Permanen di Database)</h3>
+  <table>
+    <thead>
+      <tr><th>Tanggal</th><th>Waktu</th><th>Blok</th><th>Material</th><th>Dari</th><th>Ke</th><th>Alasan</th><th>Oleh</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>2026-04-06</td><td>10:15</td><td>B1.2</td><td>Karton Mocca</td><td>4 plt</td><td>2 plt</td><td>Helper Lupa Scan</td><td>Admin Transit</td></tr>
+      <tr><td>2026-04-06</td><td>14:30</td><td>B2.1</td><td>Plastik Susu</td><td>3 plt</td><td>1 plt</td><td>Selisih Opname</td><td>Admin Transit</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<hr>
+
+<!-- ============================================ -->
+<!-- FITUR B -->
+<!-- ============================================ -->
+
+<div class="section">
+  <h2>3. Fitur B: Sistem Rekonsiliasi Material Otomatis</h2>
+
+  <h3>3.1 Latar Belakang Masalah</h3>
+  <div class="alert alert-warning">
+    <strong>Masalah:</strong> Saat ini tidak ada cara untuk mengetahui <strong>berapa material yang seharusnya dipakai</strong> vs <strong>berapa yang tercatat keluar dari transit</strong>. Jika helper lupa scan 1 pallet, tidak ada yang tahu sampai opname bulanan.
+  </div>
+
+  <h3>3.2 Solusi</h3>
+  <p>Sistem kalkulasi otomatis yang menyilangkan data <strong>Output Produksi (Counter Box)</strong> × <strong>BOM (rumus material)</strong> vs <strong>Scan OUT Transit</strong> + <strong>Reject Material</strong> untuk mendeteksi selisih secara <strong>real-time per shift</strong>.</p>
+
+  <h3>3.3 Rumus Inti</h3>
+  <div class="formula">Konsumsi Teoritis (Pallet) = (Output Box × Koefisien BOM) ÷ Qty per Pallet
+
+Selisih = Konsumsi Teoritis − Scan OUT Transit − Reject (dalam Pallet)
+
+Jika Selisih > 0  →  ⚠️ ANOMALI (ada pallet yang ditarik tanpa scan)
+Jika Selisih = 0  →  ✅ OK (semua tercatat dengan benar)
+Jika Selisih < 0  →  🔵 SURPLUS (scan lebih dari kebutuhan, mungkin buffer)</div>
+
+  <h3>3.4 Contoh Perhitungan Nyata</h3>
+  <p><strong>Skenario:</strong> Line A, Shift 2 — Memproduksi SKU "ABC Mocca 250g"</p>
+  <table>
+    <thead>
+      <tr><th>Data</th><th>Sumber</th><th>Nilai</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Output Box (Counter)</td><td>Input manual operator</td><td>4.000 box</td></tr>
+      <tr><td>Koefisien BOM (Karton Mocca)</td><td>Master BOM</td><td>1.0 PCS/box</td></tr>
+      <tr><td>Qty per Pallet</td><td>Master Pallet Config</td><td>500 PCS</td></tr>
+      <tr class="highlight-red"><td><strong>Konsumsi Teoritis</strong></td><td><strong>Kalkulasi</strong></td><td><strong>4.000 × 1.0 ÷ 500 = 8 Pallet</strong></td></tr>
+      <tr><td>Scan OUT Transit → Line A</td><td>Log stockMutations</td><td>7 Pallet</td></tr>
+      <tr><td>Reject Produksi</td><td>Input manual</td><td>0 Pallet</td></tr>
+      <tr class="highlight-red"><td><strong>SELISIH</strong></td><td><strong>8 − 7 − 0</strong></td><td><strong>= 1 Pallet ⚠️ ANOMALI</strong></td></tr>
+    </tbody>
+  </table>
+  <div class="alert alert-danger">
+    <strong>Hasil Deteksi:</strong> Sistem otomatis mendeteksi bahwa Helper lupa scan <strong>1 pallet Karton Mocca</strong> di Line A, Shift 2!
+  </div>
+
+  <h3>3.5 Alur Kerja Operator (Akhir Shift)</h3>
+  <div class="flow-block">1. Kepala Regu buka menu "🔍 Rekonsiliasi Material"
+
+2. Tab "Input Output Produksi":
+   → Pilih Shift 2, Line A, SKU "ABC Mocca 250g"
+   → Ketik: 4.000 box (dibaca dari display counter mesin)
+   → Klik Simpan
+
+3. Tab "Input Reject Material" (jika ada):
+   → Input material yang rusak/cacat hari ini beserta alasannya
+
+4. Tab "Laporan Anomali":
+   → Sistem langsung menampilkan tabel selisih per material
+   → Jika ada baris MERAH → ada kelalaian scan yang terdeteksi</div>
+
+  <h3>3.6 Contoh Tampilan Laporan Anomali</h3>
+  <div class="alert alert-danger" style="font-weight:600; text-align:center; font-size:11pt;">
+    ⚠️ 1 Material Anomali Terdeteksi — Kemungkinan Helper Lupa Scan<br>
+    <span style="font-weight:400; font-size:9pt;">Tanggal: 2026-04-06 | Shift: SH2 | Line: A</span>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Material</th><th>Line</th><th>Shift</th><th>Output (Box)</th><th>Teoritis (Plt)</th><th>Scan OUT</th><th>Reject</th><th>Selisih</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr class="highlight-red">
+        <td>Karton Mocca</td><td>A</td><td>SH2</td><td>4.000</td><td>8</td><td>7</td><td>0</td><td><strong>1</strong></td><td><span class="badge badge-red">⚠️ ANOMALI</span></td>
+      </tr>
+      <tr class="highlight-green">
+        <td>Plastik Mocca</td><td>A</td><td>SH2</td><td>4.000</td><td>0.8</td><td>1</td><td>0</td><td>0</td><td><span class="badge badge-green">✅ OK</span></td>
+      </tr>
+      <tr class="highlight-green">
+        <td>OPP Warna</td><td>A</td><td>SH2</td><td>4.000</td><td>0.5</td><td>1</td><td>0</td><td>0</td><td><span class="badge badge-green">✅ OK</span></td>
+      </tr>
+      <tr class="highlight-green">
+        <td>Label Mocca</td><td>A</td><td>SH2</td><td>4.000</td><td>4</td><td>4</td><td>0</td><td>0</td><td><span class="badge badge-green">✅ OK</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.7 Data Input Baru yang Diperlukan</h3>
+  <table>
+    <thead>
+      <tr><th>No</th><th>Data</th><th>Siapa Input</th><th>Kapan</th><th>Estimasi Waktu</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>Counter Box (Output FG per Line per Shift)</td><td>Kepala Regu / Operator</td><td>Akhir shift</td><td>~30 detik</td></tr>
+      <tr><td>2</td><td>Reject Material (jika ada)</td><td>Kepala Regu</td><td>Akhir shift / saat terjadi</td><td>~1 menit</td></tr>
+    </tbody>
+  </table>
+  <div class="alert alert-info">
+    <strong>Catatan:</strong> Data lainnya (BOM, Qty per Pallet, Scan OUT Transit) sudah otomatis tersedia di sistem yang berjalan saat ini. Tidak perlu input tambahan.
+  </div>
+</div>
+
+<hr>
+
+<!-- ============================================ -->
+<!-- ESTIMASI -->
+<!-- ============================================ -->
+
+<div class="section">
+  <h2>4. Estimasi Pengerjaan</h2>
+  <table>
+    <thead>
+      <tr><th>Fase</th><th>Cakupan</th><th>Estimasi</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>A. Koreksi Cepat</td><td>Database + Backend API + Frontend UI</td><td>~30 menit</td></tr>
+      <tr><td>B. Rekonsiliasi Material</td><td>2 Tabel baru + Backend Service + Frontend (3 Tab)</td><td>~60 menit</td></tr>
+      <tr><td>Verifikasi & Testing</td><td>Build + Uji Coba</td><td>~15 menit</td></tr>
+      <tr style="font-weight:700; background:#f0f4ff;"><td><strong>Total</strong></td><td></td><td><strong>± 1.5 Jam</strong></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<hr>
+
+<!-- ============================================ -->
+<!-- FASE 2 -->
+<!-- ============================================ -->
+
+<div class="section">
+  <h2>5. Kesiapan Integrasi Masa Depan (Fase 2)</h2>
+  <div class="alert alert-success">
+    <strong>✅ Arsitektur Siap untuk Otomatisasi:</strong><br>
+    Endpoint API untuk menerima data Counter Box (<code>POST /reconciliation/output</code>) sudah dirancang sejak awal. Di masa depan, ketika sistem monitoring counter box di pabrik sudah stabil dan sensor telah dikalibrasi, cukup mengarahkan output API monitoring mereka ke endpoint ini. <strong>Tidak perlu membangun ulang sistem.</strong>
+  </div>
+</div>
+
+<hr>
+
+<!-- FOOTER -->
+<div class="footer">
+  <p><strong>Implementation Plan — PMC JIT System v1.0</strong></p>
+  <p>PT. Santos Jaya Abadi — Departemen Produksi & Logistik</p>
+  <p>Dokumen ini bersifat internal dan rahasia. Dilarang menyebarluaskan tanpa izin.</p>
+</div>
+
+</div>
+
+</body>
+</html>

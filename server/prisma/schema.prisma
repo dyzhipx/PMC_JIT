@@ -1,0 +1,696 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════
+//  MASTER DATA
+// ═══════════════════════════════════════════
+model Supplier {
+  id        String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  code      String   @unique @db.VarChar(50)
+  name      String   @db.VarChar(255)
+  contact   String?  @db.VarChar(100)
+  address   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  skus               Sku[]
+  warehouseInventory WarehouseInventory[]
+
+  @@map("suppliers")
+}
+
+model Sku {
+  id         String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  code       String   @unique @db.VarChar(50)
+  name       String   @db.VarChar(255)
+  category   String?  @db.VarChar(100)
+  uom        String   @default("BOX") @db.VarChar(20)
+  supplierId String?  @map("supplier_id") @db.UniqueIdentifier
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @map("updated_at")
+
+  supplier        Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  bomComponents   BomComponent[]
+  lineSkuMappings LineSkuMapping[]
+
+  @@map("skus")
+}
+
+model BomComponent {
+  id           String  @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  skuId        String  @map("sku_id") @db.UniqueIdentifier
+  line         String? @db.VarChar(10)
+  materialName String  @map("material_name") @db.VarChar(255)
+  coefficient  Decimal @db.Decimal(12, 9)
+  uom          String  @db.VarChar(20)
+  rounding     String  @default("ceiling") @db.VarChar(20)
+  oracleCode   String? @map("oracle_code") @db.VarChar(50)
+  sortOrder    Int?    @default(0) @map("sort_order")
+
+  sku Sku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@map("bom_components")
+}
+
+model LineSkuMapping {
+  id    String @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  skuId String @map("sku_id") @db.UniqueIdentifier
+  line  String @db.VarChar(10)
+
+  sku Sku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@unique([skuId, line], name: "uq_line_sku")
+  @@map("line_sku_mappings")
+}
+
+model PalletQtyConfig {
+  id           String @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  materialName String @unique @map("material_name") @db.VarChar(255)
+  qtyPerPallet Int    @map("qty_per_pallet")
+
+  @@map("pallet_qty_config")
+}
+
+model UomConversion {
+  id         String  @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  uom        String  @unique @db.VarChar(20)
+  unit       String  @db.VarChar(50)
+  conversion String? @db.VarChar(100)
+
+  @@map("uom_conversions")
+}
+
+// ═══════════════════════════════════════════
+//  BLOCK & ROWS
+// ═══════════════════════════════════════════
+model BlockLayout {
+  id          String  @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  blockNumber Int     @unique @map("block_number")
+  skuCategories String? @map("sku_categories")  @db.VarChar(1000)
+  sortOrder     Int?    @default(0) @map("sort_order")
+
+  blockRows              BlockRow[]
+  transitInventory       TransitInventory[]
+  stockMutations         StockMutation[]
+  transitOutboundPending TransitOutboundPending[]
+
+  @@map("block_layout")
+}
+
+model BlockRow {
+  id            String  @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  blockId       String  @map("block_id") @db.UniqueIdentifier
+  rowNumber     Int     @map("row_number")
+  materialName  String? @default("") @map("material_name") @db.VarChar(255)
+  maxPallets    Int     @default(4) @map("max_pallets")
+  assignedLines String? @map("assigned_lines") @db.Text
+  isFlexible    Boolean @default(false) @map("is_flexible")
+
+  blockLayout BlockLayout @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  transitStockLive       TransitStockLive[]
+  stockCheckEntries      StockCheckEntry[]
+  transitInventory       TransitInventory[]
+  stockMutations         StockMutation[]
+  transitOutboundPending TransitOutboundPending[]
+  transitOpnameItems     TransitOpnameItem[]
+
+  @@map("block_rows")
+}
+
+model MaterialReceh {
+  id           String @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  materialName String @unique @map("material_name") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("material_receh")
+}
+
+model StockCheck {
+  id        String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  checkDate DateTime @unique @map("check_date") @db.Date
+  checkedBy String?  @map("checked_by") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  entries StockCheckEntry[]
+
+  @@map("stock_checks")
+}
+
+model StockCheckEntry {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  stockCheckId String   @map("stock_check_id") @db.UniqueIdentifier
+  blockRowId   String   @map("block_row_id") @db.UniqueIdentifier
+  palletIndex  Int      @map("pallet_index")
+  quantity     Decimal? @db.Decimal(10, 4)
+
+  stockCheck StockCheck @relation(fields: [stockCheckId], references: [id], onDelete: Cascade)
+  blockRow   BlockRow   @relation(fields: [blockRowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("stock_check_entries")
+}
+
+// ═══════════════════════════════════════════
+//  DELIVERY & SCANS
+// ═══════════════════════════════════════════
+model Delivery {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  compositeKey String   @unique @map("composite_key") @db.VarChar(100)
+  date         DateTime @db.Date
+  shiftKey     String   @map("shift_key") @db.VarChar(10)
+  slotId       Int      @map("slot_id")
+  status       String   @default("preparing") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @map("updated_at")
+
+  items DeliveryItem[]
+  scans DeliveryScan[]
+
+  @@map("deliveries")
+}
+
+model DeliveryItem {
+  id              String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  deliveryId      String   @map("delivery_id") @db.UniqueIdentifier
+  materialName    String   @map("material_name") @db.VarChar(255)
+  requiredPallets Int      @default(0) @map("required_pallets")
+  scannedPallets  Decimal? @default(0) @map("scanned_pallets") @db.Decimal(10, 4)
+
+  delivery Delivery       @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  scans    DeliveryScan[]
+
+  @@map("delivery_items")
+}
+
+model DeliveryScan {
+  id               String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  deliveryId       String   @map("delivery_id") @db.UniqueIdentifier
+  deliveryItemId   String   @map("delivery_item_id") @db.UniqueIdentifier
+  barcode          String?  @unique @db.VarChar(50)
+  qtyPallet        Int      @default(1) @map("qty_pallet")
+  uom              String?  @db.VarChar(20)
+  pcs              Decimal? @db.Decimal(12, 4)
+  supplier         String?  @db.VarChar(255)
+  targetBlockRowId String?  @map("target_block_row_id") @db.UniqueIdentifier
+  scannedAt        DateTime @default(now()) @map("scanned_at")
+
+  delivery     Delivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  deliveryItem DeliveryItem @relation(fields: [deliveryItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("delivery_scans")
+}
+
+// ═══════════════════════════════════════════
+//  EXTERNAL ON HAND
+// ═══════════════════════════════════════════
+model ExternalOnhand {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  destination  String   @db.VarChar(10)
+  materialName String   @map("material_name") @db.VarChar(255)
+  qtyPallets   Int      @default(0) @map("qty_pallets")
+  pcs          Decimal? @default(0) @db.Decimal(12, 4)
+
+  @@unique([destination, materialName], name: "uq_dest_material")
+  @@map("external_onhand")
+}
+
+model ExternalOnhandBarcode {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  destination  String   @db.VarChar(10)
+  barcode      String   @db.VarChar(50)
+  materialName String   @map("material_name") @db.VarChar(255)
+  pcs          Decimal? @db.Decimal(12, 4)
+  supplier     String?  @db.VarChar(255)
+  dateIn       DateTime @map("date_in") @db.Date
+  timeIn       DateTime @map("time_in") @db.Time
+
+  @@map("external_onhand_barcodes")
+}
+
+// ═══════════════════════════════════════════
+//  PRODUCTION
+// ═══════════════════════════════════════════
+model LineStock {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  line         String   @db.VarChar(10)
+  materialName String   @map("material_name") @db.VarChar(255)
+  qtyPallets   Int      @default(0) @map("qty_pallets")
+  pcs          Decimal? @default(0) @db.Decimal(12, 4)
+
+  @@unique([line, materialName], name: "uq_line_material")
+  @@map("line_stock")
+}
+
+model LineBarcode {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  barcode      String   @db.VarChar(50)
+  materialName String   @map("material_name") @db.VarChar(255)
+  line         String   @db.VarChar(10)
+  pcs          Decimal? @db.Decimal(12, 4)
+  supplier     String?  @db.VarChar(255)
+  dateIn       DateTime @map("date_in") @db.Date
+  timeIn       DateTime @map("time_in") @db.Time
+
+  @@index([barcode])
+  @@map("line_barcodes")
+}
+
+model LineReject {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  barcode      String?  @db.VarChar(50)
+  materialName String   @map("material_name") @db.VarChar(255)
+  line         String   @db.VarChar(10)
+  pcs          Decimal  @db.Decimal(12, 4)
+  reason       String   @db.VarChar(50)
+  supplier     String?  @db.VarChar(255)
+  status       String   @default("pending") @db.VarChar(20)
+  date         DateTime @db.Date
+  time         DateTime @db.Time
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("line_rejects")
+}
+
+model PendingReturn {
+  id               String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  barcode          String   @db.VarChar(50)
+  materialName     String   @map("material_name") @db.VarChar(255)
+  line             String   @db.VarChar(10)
+  pcs              Decimal? @db.Decimal(12, 4)
+  supplier         String?  @db.VarChar(255)
+  date             DateTime @db.Date
+  time             DateTime @db.Time
+  status           String?  @default("pending") @db.VarChar(20)
+  targetBlockRowId String?  @map("target_block_row_id") @db.UniqueIdentifier
+  condition        String?  @default("utuh") @map("condition") @db.VarChar(20)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("pending_returns")
+}
+
+// ═══════════════════════════════════════════
+//  SCHEDULE
+// ═══════════════════════════════════════════
+model Schedule {
+  id        String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  date      DateTime @db.Date
+  line      String   @db.VarChar(10)
+  skuId     String   @map("sku_id") @db.VarChar(50)
+  sh1       Int      @default(0)
+  sh2       Int      @default(0)
+  sh3       Int      @default(0)
+  status    String   @default("pending") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("schedules")
+}
+
+// ═══════════════════════════════════════════
+//  TRANSIT & MUTATIONS
+// ═══════════════════════════════════════════
+model TransitInventory {
+  id               String    @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  materialName     String    @map("material_name") @db.VarChar(255)
+  barcode          String    @db.VarChar(50)
+  mid              String?   @db.VarChar(50)
+  dateInGudang     DateTime? @map("date_in_gudang") @db.Date
+  dateInTransit    DateTime  @map("date_in_transit") @db.Date
+  timeInTransit    DateTime  @map("time_in_transit") @db.Time
+  palletsAvailable Int       @default(1) @map("pallets_available")
+  pcs              Decimal?  @db.Decimal(12, 4)
+  supplier         String?   @db.VarChar(255)
+  blockId          String?   @map("block_id") @db.UniqueIdentifier
+  blockRowId       String?   @map("block_row_id") @db.UniqueIdentifier
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  blockLayout BlockLayout? @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  blockRow    BlockRow?    @relation(fields: [blockRowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([barcode])
+  @@index([materialName])
+  @@map("transit_inventory")
+}
+
+model TransitStockLive {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  blockRowId   String   @map("block_row_id") @db.UniqueIdentifier
+  materialName String?  @map("material_name") @db.VarChar(255)
+  qtyPallets   Int      @default(0) @map("qty_pallets")
+  pcs          Decimal? @default(0) @db.Decimal(12, 4)
+
+  blockRow BlockRow @relation(fields: [blockRowId], references: [id], onDelete: Cascade)
+
+  @@index([blockRowId, materialName])
+  @@map("transit_stock_live")
+}
+
+model StockMutation {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  date         DateTime @db.Date
+  time         DateTime @db.Time
+  type         String   @db.VarChar(10)
+  source       String?  @db.VarChar(30)
+  materialName String   @map("material_name") @db.VarChar(255)
+  qty          Decimal  @db.Decimal(12, 4)
+  uom          String   @db.VarChar(20)
+  line         String?  @db.VarChar(100)
+  skuId        String?  @map("sku_id") @db.VarChar(50)
+  barcode      String?  @db.VarChar(50)
+  blockId      String?  @map("block_id") @db.UniqueIdentifier
+  blockRowId   String?  @map("block_row_id") @db.UniqueIdentifier
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  blockLayout BlockLayout? @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  blockRow    BlockRow?    @relation(fields: [blockRowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([barcode])
+  @@index([blockRowId])
+  @@index([source])
+  @@map("stock_mutations")
+}
+
+model UsedBarcode {
+  id      String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  barcode String   @unique @db.VarChar(50)
+  usedAt  DateTime @default(now()) @map("used_at")
+
+  @@map("used_barcodes")
+}
+
+model TransitOutboundPending {
+  id           String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  barcode      String   @db.VarChar(50)
+  materialName String   @map("material_name") @db.VarChar(255)
+  supplier     String?  @db.VarChar(255)
+  pcs          Decimal? @db.Decimal(12, 4)
+  destination  String   @db.VarChar(20)
+  targetLine   String?  @map("target_line") @db.VarChar(10)
+  date         DateTime @db.Date
+  time         DateTime @db.Time
+  blockId      String?  @map("block_id") @db.UniqueIdentifier
+  blockRowId   String?  @map("block_row_id") @db.UniqueIdentifier
+  status       String?  @default("pending") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  blockLayout BlockLayout? @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  blockRow    BlockRow?    @relation(fields: [blockRowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("transit_outbound_pending")
+}
+
+// ═══════════════════════════════════════════
+//  WAREHOUSE (WMS)
+// ═══════════════════════════════════════════
+model WarehouseInventory {
+  id               String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  mid              String   @db.VarChar(50)
+  barcode          String   @unique @db.VarChar(50)
+  materialName     String   @map("material_name") @db.VarChar(255)
+  supplierName     String?  @map("supplier_name") @db.VarChar(255)
+  supplierId       String?  @map("supplier_id") @db.UniqueIdentifier
+  qtyPerPallet     Decimal? @map("qty_per_pallet") @db.Decimal(10, 2)
+  palletsAvailable Int      @default(1) @map("pallets_available")
+  dateIn           DateTime @map("date_in") @db.Date
+  timeIn           DateTime @map("time_in") @db.Time
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([materialName])
+  @@index([dateIn])
+  @@map("warehouse_inventory")
+}
+
+model SystemCounter {
+  id    String @id @db.VarChar(50)
+  value Int    @default(0)
+
+  @@map("system_counters")
+}
+
+// ═══════════════════════════════════════════
+//  AUTH (Better Auth)
+// ═══════════════════════════════════════════
+model User {
+  id            String    @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  name          String    @db.VarChar(255)
+  email         String    @unique @db.VarChar(255)
+  emailVerified Boolean   @map("email_verified")
+  image         String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  role          String?   @default("viewer") @db.VarChar(50)
+
+  sessions Session[]
+  accounts Account[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  expiresAt DateTime @map("expires_at")
+  token     String   @unique @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ipAddress String?  @map("ip_address") @db.VarChar(50)
+  userAgent String?  @map("user_agent") @db.Text
+  userId    String   @map("user_id") @db.UniqueIdentifier
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  accountId             String    @map("account_id") @db.VarChar(255)
+  providerId            String    @map("provider_id") @db.VarChar(255)
+  userId                String    @map("user_id") @db.UniqueIdentifier
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @map("access_token") @db.Text
+  refreshToken          String?   @map("refresh_token") @db.Text
+  idToken               String?   @map("id_token") @db.Text
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?   @db.Text
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  identifier String   @db.VarChar(255)
+  value      String   @db.VarChar(255)
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("verifications")
+}
+
+// ═══════════════════════════════════════════
+//  MANUAL SPB (Surat Perintah Bonkar Manual)
+// ═══════════════════════════════════════════
+model ManualSpb {
+  id          String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  spbNumber   String   @unique @map("spb_number") @db.VarChar(50)
+  requestedBy String   @map("requested_by") @db.VarChar(255)
+  reason      String?  @db.VarChar(500)
+  status      String   @default("active") @db.VarChar(20)
+  targetDate  DateTime? @map("target_date")
+  targetShift Int?      @map("target_shift")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @map("updated_at")
+
+  items ManualSpbItem[]
+
+  @@map("manual_spb")
+}
+
+model ManualSpbItem {
+  id               String  @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  spbId            String  @map("spb_id") @db.UniqueIdentifier
+  materialName     String  @map("material_name") @db.VarChar(255)
+  qtyPallets       Int     @map("qty_pallets")
+  qtyPcs           Int?    @map("qty_pcs")
+  scannedPallets   Int     @default(0) @map("scanned_pallets")
+  receivedPallets  Int     @default(0) @map("received_pallets")
+  targetBlockRowId String? @map("target_block_row_id") @db.UniqueIdentifier
+  status           String  @default("pending") @db.VarChar(20)
+
+  spb ManualSpb @relation(fields: [spbId], references: [id], onDelete: Cascade)
+  scans ManualSpbScan[]
+
+  @@map("manual_spb_items")
+}
+
+model ManualSpbScan {
+  id               String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  manualSpbItemId  String   @map("manual_spb_item_id") @db.UniqueIdentifier
+  barcode          String?  @unique @db.VarChar(100)
+  pcs              Float?
+  supplier         String?  @db.VarChar(255)
+  targetBlockRowId String?  @map("target_block_row_id") @db.UniqueIdentifier
+  status           String   @default("shipping") @db.VarChar(20) // shipping | received
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  item ManualSpbItem @relation(fields: [manualSpbItemId], references: [id], onDelete: Cascade)
+
+  @@map("manual_spb_scans")
+}
+
+// -------------------------------------------
+//  PRODUCTION BPP (VERIFIKASI HASIL PRODUKSI)
+// -------------------------------------------
+model ProductionBpp {
+  id          String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  bppNumber   String   @unique @map("bpp_number") @db.VarChar(50)
+  line        String   @db.VarChar(10)
+  skuId       String   @map("sku_id") @db.VarChar(50)
+  qty         Int      @default(0)
+  shift       Int?
+  date        DateTime @db.Date
+  status      String   @default("verified") @db.VarChar(20) // verified | edited
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  items ProductionBppItem[]
+
+  @@map("production_bpp")
+}
+
+model ProductionBppItem {
+  id               String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  productionBppId  String   @map("production_bpp_id") @db.UniqueIdentifier
+  materialName     String   @map("material_name") @db.VarChar(255)
+  qtyDeducted      Decimal  @map("qty_deducted") @db.Decimal(12, 4)
+
+  bpp ProductionBpp @relation(fields: [productionBppId], references: [id], onDelete: Cascade)
+
+  @@map("production_bpp_items")
+}
+
+// -------------------------------------------
+//  PRODUCTION LINE OPNAME (STOCK CHECK)
+// -------------------------------------------
+model ProductionOpname {
+  id          String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  date        DateTime @db.Date
+  type        String   @db.VarChar(20) // DAILY, WEEKLY, MONTHLY
+  line        String   @db.VarChar(10)
+  checkedBy   String?  @map("checked_by") @db.VarChar(100)
+  notes       String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  items ProductionOpnameItem[]
+
+  @@map("production_opname")
+}
+
+model ProductionOpnameItem {
+  id                  String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  productionOpnameId  String   @map("production_opname_id") @db.UniqueIdentifier
+  materialName        String   @map("material_name") @db.VarChar(255)
+  qtyBook             Decimal  @map("qty_book") @db.Decimal(12, 4)
+  qtyPhysical         Decimal  @map("qty_physical") @db.Decimal(12, 4)
+  delta               Decimal  @db.Decimal(12, 4)
+  calculatorNotes     String?  @map("calculator_notes") @db.VarChar(1000)
+
+  opname ProductionOpname @relation(fields: [productionOpnameId], references: [id], onDelete: Cascade)
+
+  @@map("production_opname_items")
+}
+
+// -------------------------------------------
+//  KAMUS OPNAME (OPNAME MATERIAL DICTIONARY)
+// -------------------------------------------
+model KamusOpname {
+  id              String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  materialName    String   @map("material_name") @db.VarChar(255)
+  oracleCode      String?  @map("oracle_code") @db.VarChar(50)
+  beratRollUtuh   Decimal? @map("berat_roll_utuh") @db.Decimal(12, 4)
+  beratCore       Decimal? @map("berat_core") @db.Decimal(12, 4)
+  jumlahSachet    Int?     @map("jumlah_sachet")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @map("updated_at")
+
+  @@map("kamus_opname")
+}
+
+// -------------------------------------------
+//  TRANSIT OPNAME (STOCK CHECK BLOK)
+// -------------------------------------------
+model TransitOpname {
+  id          String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  date        DateTime @db.Date
+  type        String   @db.VarChar(20) // DAILY, WEEKLY, MONTHLY
+  blockId     String   @map("block_id") @db.UniqueIdentifier
+  checkedBy   String?  @map("checked_by") @db.VarChar(100)
+  notes       String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  items TransitOpnameItem[]
+
+  @@map("transit_opname")
+}
+
+model TransitOpnameItem {
+  id                  String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  transitOpnameId     String   @map("transit_opname_id") @db.UniqueIdentifier
+  blockRowId          String   @map("block_row_id") @db.UniqueIdentifier
+  materialName        String   @map("material_name") @db.VarChar(255)
+  qtyBook             Decimal  @map("qty_book") @db.Decimal(12, 4)
+  qtyPhysical         Decimal  @map("qty_physical") @db.Decimal(12, 4)
+  delta               Decimal  @db.Decimal(12, 4)
+  calculatorNotes     String?  @map("calculator_notes") @db.VarChar(1000)
+
+  opname   TransitOpname @relation(fields: [transitOpnameId], references: [id], onDelete: Cascade)
+  blockRow BlockRow      @relation(fields: [blockRowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("transit_opname_items")
+}
+
+// -------------------------------------------
+//  ANOMALY LOG (RIWAYAT ANOMALI LUPA SCAN)
+// -------------------------------------------
+model AnomalyLog {
+  id            String    @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  barcode       String    @db.VarChar(50)
+  materialName  String    @map("material_name") @db.VarChar(255)
+  dateInTransit DateTime  @map("date_in_transit") @db.Date
+  timeInTransit DateTime  @map("time_in_transit") @db.Time
+  status        String    @db.VarChar(50)
+  shift         Int       @default(1)
+  bppQty        Decimal   @default(0) @db.Decimal(12, 4)
+  detectedAt    DateTime  @default(now()) @map("detected_at")
+  resolvedAt    DateTime? @map("resolved_at")
+
+  @@unique([barcode, status])
+  @@map("anomaly_logs")
+}
+
+// -------------------------------------------
+//  AUDIT LOG (TRACEABILITY)
+// -------------------------------------------
+model AuditLog {
+  id        String   @id @default(dbgenerated("NEWID()")) @db.UniqueIdentifier
+  timestamp DateTime @default(now())
+  user      String   @db.VarChar(255)
+  module    String   @db.VarChar(50)
+  action    String   @db.VarChar(500)
+  details   String?  @db.Text
+  
+  @@index([timestamp])
+  @@index([module])
+  @@map("audit_logs")
+}
