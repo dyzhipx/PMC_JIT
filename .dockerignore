@@ -1,21 +1,5 @@
 node_modules
+npm-debug.log
 dist
 .git
-.gitignore
-*.md
-Dockerfile
-docker-compose.yml
-.npm
-package-lock.json
-C:\Users\54321\.gemini
-C:\Users\54321\Desktop\jit 2\src\**\*.log
-C:\Users\54321\Desktop\jit 2\temp
-C:\Users\54321\Desktop\jit 2\node_modules
-C:\Users\54321\Desktop\jit 2\dist
-C:\Users\54321\Desktop\jit 2\.git
-C:\Users\54321\Desktop\jit 2\.gitignore
-C:\Users\54321\Desktop\jit 2\*.md
-C:\Users\54321\Desktop\jit 2\Dockerfile
-C:\Users\54321\Desktop\jit 2\docker-compose.yml
-C:\Users\54321\Desktop\jit 2\.npm
-C:\Users\54321\Desktop\jit 2\package-lock.json
+.env
