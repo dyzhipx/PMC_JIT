@@ -12,10 +12,12 @@ server/.env
 
 # ══════════════════════════════════════
 #  Build Output
+#  NOTE: dist/ dan server/dist/ SENGAJA di-include agar
+#  SmarterASP.NET mendapat file build hasil compile.
 # ══════════════════════════════════════
-dist/
+# dist/
 dev-dist/
-server/dist/
+# server/dist/
 
 # ══════════════════════════════════════
 #  Prisma Generated

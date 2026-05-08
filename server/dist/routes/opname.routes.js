@@ -1,0 +1,19 @@
+import { Router } from "express";
+import { getOpnameRecapPivot } from "../services/opname.service.js";
+const router = Router();
+router.get("/recap", async (req, res) => {
+    try {
+        const { startDate, endDate, area } = req.query;
+        const data = await getOpnameRecapPivot({
+            startDate: startDate,
+            endDate: endDate,
+            area: area,
+        });
+        res.json(data);
+    }
+    catch (error) {
+        console.error("Error getting opname recap:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+export default router;
